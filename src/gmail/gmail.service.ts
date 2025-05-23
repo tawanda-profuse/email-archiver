@@ -1,15 +1,15 @@
-/* eslint-disable prettier/prettier */
-import { google  } from 'googleapis';
-import { EmailService } from '../email/email.service';
-import { Injectable } from '@nestjs/common';
+import { google } from 'googleapis';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
+import { EmailService } from 'src/email/email.service';
 
 @Injectable()
 export class GmailService {
   private oAuth2Client: OAuth2Client;
 
   constructor(
+    @Inject(forwardRef(() => EmailService))
     private emailService: EmailService,
     private configService: ConfigService,
   ) {
@@ -21,7 +21,7 @@ export class GmailService {
 
     // Load tokens here or from DB/session securely
     this.oAuth2Client.setCredentials({
-      refresh_token: configService.get('GOOGLE_REFRESH_TOKEN'),
+      refresh_token: configService.get('GOOGLE_REFRESH_TOKEN'), // TODO: Find refresh token
     });
   }
 
@@ -47,7 +47,8 @@ export class GmailService {
       historyTypes: ['messageAdded'],
     });
 
-    const messages = history.data.history?.flatMap((h) => h.messages || []) || [];
+    const messages =
+      history.data.history?.flatMap((h) => h.messages || []) || [];
 
     for (const msg of messages) {
       const fullMessage = await gmail.users.messages.get({
@@ -56,30 +57,55 @@ export class GmailService {
         format: 'full',
       });
 
-      await this.emailService.processAndStoreEmail(fullMessage.data);
+      // Ensure id is present and is a string
+      if (!fullMessage.data.id) {
+        // Optionally log or handle this case
+        continue;
+      }
+
+      // Ensure required fields are present and of correct type
+      if (
+        typeof fullMessage.data.id === 'string' &&
+        typeof fullMessage.data.threadId === 'string' &&
+        typeof fullMessage.data.internalDate === 'string' &&
+        fullMessage.data.payload
+      ) {
+        await this.emailService.processAndStoreEmail({
+          id: fullMessage.data.id,
+          threadId: fullMessage.data.threadId,
+          payload: fullMessage.data.payload,
+          internalDate: fullMessage.data.internalDate,
+        });
+      }
     }
 
     if (history.data.historyId) {
-      await this.emailService.updateSyncState(userEmail, history.data.historyId);
+      await this.emailService.updateSyncState(
+        userEmail,
+        history.data.historyId,
+      );
     }
   }
 
-  async uploadToDrive(filename: string, buffer: Buffer, mimeType: string): Promise<string> {
-  const drive = google.drive({ version: 'v3', auth: this.oAuth2Client });
+  async uploadToDrive(
+    filename: string,
+    buffer: Buffer,
+    mimeType: string,
+  ): Promise<string> {
+    const drive = google.drive({ version: 'v3', auth: this.oAuth2Client });
 
-  const file = await drive.files.create({
-    requestBody: {
-      name: filename,
-      mimeType,
-    },
-    media: {
-      mimeType,
-      body: Buffer.from(buffer),
-    },
-    fields: 'id,webViewLink',
-  });
+    const file = await drive.files.create({
+      requestBody: {
+        name: filename,
+        mimeType,
+      },
+      media: {
+        mimeType,
+        body: Buffer.from(buffer),
+      },
+      fields: 'id,webViewLink',
+    });
 
-  return file.data.webViewLink!;
+    return file.data.webViewLink!;
   }
 }
-

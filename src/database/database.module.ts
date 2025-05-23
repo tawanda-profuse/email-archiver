@@ -1,7 +1,6 @@
-/* eslint-disable prettier/prettier */
-import { Module } from '@nestjs/common'
-import { TypeOrmModule } from '@nestjs/typeorm'
-import { ConfigModule } from '@nestjs/config'
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -15,7 +14,7 @@ import { ConfigModule } from '@nestjs/config'
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
         entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-        synchronize: true, // turn off in production
+        synchronize: process.env.NODE_ENV === 'production' ? false : true, // turn off in production
       }),
     }),
   ],

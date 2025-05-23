@@ -1,5 +1,9 @@
-/* eslint-disable prettier/prettier */
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+} from 'typeorm';
 
 @Entity()
 export class Email {
@@ -33,6 +37,6 @@ export class Email {
   @CreateDateColumn()
   receivedAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   googleDriveLink: string | null;
 }
