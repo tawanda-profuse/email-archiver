@@ -1,0 +1,38 @@
+/* eslint-disable prettier/prettier */
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+
+@Entity()
+export class Email {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  messageId: string;
+
+  @Column()
+  threadId: string;
+
+  @Column()
+  subject: string;
+
+  @Column({ type: 'text' })
+  body: string;
+
+  @Column()
+  sender: string;
+
+  @Column()
+  recipients: string;
+
+  @Column()
+  cc: string;
+
+  @Column()
+  bcc: string;
+
+  @CreateDateColumn()
+  receivedAt: Date;
+
+  @Column({ nullable: true })
+  googleDriveLink: string | null;
+}
