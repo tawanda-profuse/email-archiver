@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { GmailService } from './gmail.service';
 
 @Controller('poll')
@@ -6,17 +6,21 @@ export class GmailController {
   constructor(private gmailService: GmailService) {}
 
   @Get()
-  async pollNow() {
+  async pollNow(
+    @Query('maxResults') maxResults = '10',
+    @Query('page') page = '1',
+  ) {
     const userEmail = process.env.USER_EMAIL;
     if (!userEmail) {
       throw new Error('USER_EMAIL environment variable is not set');
     }
-    const messages = await this.gmailService.pollInbox(userEmail);
 
-    return {
-      status: 'Polling complete',
-      messageCount: messages.length,
-      messages, // will contain minimal metadata; can be enhanced
-    };
+    const results: unknown = await this.gmailService.pollInbox(
+      userEmail,
+      parseInt(maxResults),
+      parseInt(page),
+    );
+
+    return results;
   }
 }

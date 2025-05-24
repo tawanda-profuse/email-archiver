@@ -1,11 +1,11 @@
-import { google, gmail_v1 } from 'googleapis';
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { gmail_v1, google } from 'googleapis';
+import { forwardRef, Inject, Injectable, Query } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import { EmailService } from 'src/email/email.service';
 import { Readable } from 'typeorm/platform/PlatformTools';
-import {Cron, CronExpression} from '@nestjs/schedule';
-import {Logger} from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { Logger } from '@nestjs/common';
 
 @Injectable()
 export class GmailService {
@@ -40,13 +40,17 @@ export class GmailService {
     return res.data;
   }
 
-  async pollInbox(userEmail: string): Promise<
+  async pollInbox(
+    userEmail: string,
+    maxResults = 10,
+    page = 1,
+  ): Promise<
     {
       id: string;
       subject: string;
       from: string;
       date: string;
-      isFresh: boolean; // added to distinguish fresh messages
+      isFresh: boolean;
     }[]
   > {
     const gmail = google.gmail({ version: 'v1', auth: this.oAuth2Client });
@@ -58,7 +62,7 @@ export class GmailService {
     let messages: gmail_v1.Schema$Message[] = [];
     const fallbackMessages: gmail_v1.Schema$Message[] = [];
 
-    // 1. Fetch new messages via History API
+    // Fetch new messages via History API
     if (startHistoryId) {
       const history = await gmail.users.history.list({
         userId: 'me',
@@ -68,11 +72,11 @@ export class GmailService {
 
       messages = history.data.history?.flatMap((h) => h.messages || []) || [];
 
-      // 2. Always include recent inbox as fallback
+      // Fallback to recent inbox
       const fallback = await gmail.users.messages.list({
         userId: 'me',
         q: 'in:inbox',
-        maxResults: 10,
+        maxResults: 100,
       });
       fallbackMessages.push(...(fallback.data.messages || []));
 
@@ -83,11 +87,10 @@ export class GmailService {
         );
       }
     } else {
-      // 3. First time setup — fallback only
       const recent = await gmail.users.messages.list({
         userId: 'me',
         q: 'in:inbox',
-        maxResults: 10,
+        maxResults: 100,
       });
 
       messages = recent.data.messages || [];
@@ -101,19 +104,21 @@ export class GmailService {
       }
     }
 
-    // 4. Merge and deduplicate message IDs
+    // Merge and deduplicate
     const allMessageIds = new Set([
       ...messages.map((m) => m.id),
       ...fallbackMessages.map((m) => m.id),
     ]);
 
-    const allMessages: gmail_v1.Schema$Message[] = Array.from(
-      allMessageIds,
-    ).map((id) => {
-      return { id } as gmail_v1.Schema$Message;
-    });
+    const uniqueMessageIds = Array.from(allMessageIds);
 
-    // 5. Process and enrich messages
+    // Apply pagination
+    const startIndex = (page - 1) * maxResults;
+    const pagedIds = uniqueMessageIds.slice(
+      startIndex,
+      startIndex + maxResults,
+    );
+
     const enrichedMessages: {
       id: string;
       subject: string;
@@ -124,10 +129,13 @@ export class GmailService {
 
     let freshCount = 0;
 
-    for (const msg of allMessages) {
+    for (const id of pagedIds) {
+      if (typeof id !== 'string') {
+        continue;
+      }
       const fullMessage = await gmail.users.messages.get({
         userId: 'me',
-        id: msg.id!,
+        id: id,
         format: 'full',
       });
 
@@ -167,7 +175,7 @@ export class GmailService {
     }
 
     console.log(
-      `Fetched ${enrichedMessages.length} total messages for ${userEmail}. ${freshCount} new message(s).`,
+      `Fetched ${enrichedMessages.length} messages for ${userEmail}. ${freshCount} fresh.`,
     );
 
     return enrichedMessages;
@@ -196,14 +204,21 @@ export class GmailService {
   }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
-  async handleCron() {
+  async handleCron(
+    @Query('maxResults') maxResults = '10',
+    @Query('page') page = '1',
+  ) {
     const userEmail = process.env.USER_EMAIL;
     if (!userEmail) {
       this.logger.error('USER_EMAIL environment variable is not set');
       return;
     }
     this.logger.log(`Starting polling for ${userEmail}`);
-    const messages = await this.pollInbox(userEmail);
+    const messages = await this.pollInbox(
+      userEmail,
+      parseInt(maxResults),
+      parseInt(page),
+    );
 
     return {
       status: 'Polling complete',
