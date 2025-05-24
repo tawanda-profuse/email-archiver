@@ -15,7 +15,6 @@ export class AuthController {
   @Get('callback')
   async callback(@Query('code') code: string, @Res() res: Response) {
     const tokens = await this.authService.getTokens(code);
-    // Store tokens securely in DB (not shown here)
     return res.json(tokens);
   }
 }

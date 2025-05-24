@@ -79,4 +79,15 @@ $ npm run test:cov
 
 ## Deployment
 
-The backend can be deployed with Google Cloud Run. The public endpoint provided by the Google Cloud Runner can be used together with Google Push Notifications.
+The backend can be deployed with Google Cloud Run. The public endpoint provided by the Google Cloud Runner can be used together with the Google Cloud Scheduler API or Google Push Notifications.
+
+## Key Criteria
+
+1. System authenticates with Gmail API using OAuth without requiring password storage - **authService.getAuthUrl()** ([file](/src/auth/auth.controller.ts)).
+2. All incoming emails are captured and stored in PostgreSQL within 5 minutes of receipt - **handleCron()** ([file](/src/gmail/gmail.service.ts)).
+3. Email attachments are uploaded to Google Drive with links stored in the database - **uploadToDrive()** ([file](/src/gmail/gmail.service.ts)).
+4. Email metadata (sender, recipients, timestamps, headers) is properly captured - **processAndStoreEmail()** ([file](/src/email/email.service.ts)).
+5. Email threading information is preserved - **processAndStoreEmail()** ([file](/src/email/email.service.ts)).
+6. System handles emails with multiple recipients and CC/BCC fields correctly - **recipients** ([file](/src/email//email.entity.ts)).
+7. Duplicate emails are identified and not stored multiple times - **isDuplicate()** ([file](/src/email/email.service.ts)).
+8. Handle pagination for large mailboxes - **pollInbox()** ([file](/src/gmail/gmail.service.ts)).
