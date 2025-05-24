@@ -79,7 +79,7 @@ $ npm run test:cov
 
 ## Deployment
 
-The backend can be deployed with Google Cloud Run. The public endpoint provided by the Google Cloud Runner can be used together with the Google Cloud Scheduler API or Google Push Notifications.
+The backend can be deployed with Google Cloud Run and setting up a [Dockerfile](/Dockerfile) similar to the one in this repository. The public endpoint provided by the Google Cloud Runner can be used together with the Google Cloud Scheduler API or Google Push Notifications.
 
 ## Key Criteria
 
