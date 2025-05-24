@@ -6,6 +6,14 @@ import { SyncState } from './sync.entity';
 import { GmailService } from 'src/gmail/gmail.service';
 import { google } from 'googleapis';
 
+type GmailAttachment = {
+  filename: string;
+  mimeType: string;
+  size: number;
+  data?: string; // base64-encoded content, optional
+  attachmentId: string;
+};
+
 @Injectable()
 export class EmailService {
   constructor(
@@ -42,7 +50,7 @@ export class EmailService {
     );
 
     const body = this.extractEmailBody(message.payload);
-    const attachments = await this.extractAttachments(message);
+    const attachments = this.extractAttachments(message.payload);
 
     const email = {
       messageId,
@@ -61,36 +69,71 @@ export class EmailService {
   }
 
   extractEmailBody(payload: any): string {
-    if (payload.parts) {
-      const part = payload.parts.find(
-        (p) => p.mimeType === 'text/html' || p.mimeType === 'text/plain',
-      );
-      return Buffer.from(part.body.data, 'base64').toString('utf-8');
+    const getBody = (parts: any[]): string | null => {
+      for (const part of parts) {
+        if (part.mimeType === 'text/html' && part.body?.data) {
+          return Buffer.from(part.body.data, 'base64').toString('utf-8');
+        }
+      }
+      for (const part of parts) {
+        if (part.mimeType === 'text/plain' && part.body?.data) {
+          return Buffer.from(part.body.data, 'base64').toString('utf-8');
+        }
+      }
+      for (const part of parts) {
+        if (part.parts) {
+          const nested = getBody(part.parts);
+          if (nested) return nested;
+        }
+      }
+      return null;
+    };
+
+    // Handle simple messages without parts
+    if (payload.body?.data) {
+      return Buffer.from(payload.body.data, 'base64').toString('utf-8');
     }
-    return Buffer.from(payload.body.data || '', 'base64').toString('utf-8');
+
+    // Handle multipart messages
+    if (payload.parts) {
+      const body = getBody(payload.parts);
+      return body || '';
+    }
+
+    return '';
   }
 
-  async extractAttachments(
-    message: any,
-  ): Promise<{ name: string; link: string }[]> {
-    const attachments: { name: string; link: string }[] = [];
+  extractAttachments(payload: any): GmailAttachment[] {
+    const attachments: GmailAttachment[] = [];
 
-    const parts = message.payload.parts || [];
-    for (const part of parts) {
-      if (part.filename && part.body.attachmentId) {
-        const attachment = await this.fetchAttachment(
-          message.id,
-          part.body.attachmentId,
-        );
-        const buffer = Buffer.from(attachment.data, 'base64');
-        const link = await this.gmailService.uploadToDrive(
-          part.filename,
-          buffer,
-          part.mimeType || 'application/octet-stream',
-        );
-        attachments.push({ name: part.filename, link });
+    const traverseParts = (parts: any[]) => {
+      for (const part of parts) {
+        // If it's an attachment
+        if (
+          part.filename &&
+          part.filename.length > 0 &&
+          part.body?.attachmentId
+        ) {
+          attachments.push({
+            filename: part.filename,
+            mimeType: part.mimeType,
+            size: part.body.size || 0,
+            attachmentId: part.body.attachmentId,
+            data: part.body.data ?? undefined, // Some attachments may be inline
+          });
+        }
+
+        // Continue recursion into nested parts
+        if (part.parts && part.parts.length > 0) {
+          traverseParts(part.parts);
+        }
       }
+    };
+
+    if (payload.parts && payload.parts.length > 0) {
+      traverseParts(payload.parts);
     }
+
     return attachments;
   }
 

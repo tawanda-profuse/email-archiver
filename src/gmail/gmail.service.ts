@@ -21,7 +21,8 @@ export class GmailService {
 
     // Load tokens here or from DB/session securely
     this.oAuth2Client.setCredentials({
-      refresh_token: configService.get('GOOGLE_REFRESH_TOKEN'), // TODO: Find refresh token
+      refresh_token: configService.get('GOOGLE_REFRESH_TOKEN'),
+      access_token: configService.get('GOOGLE_ACCESS_TOKEN'),
     });
   }
 
@@ -41,15 +42,52 @@ export class GmailService {
     const syncState = await this.emailService.getSyncState(userEmail);
     const startHistoryId = syncState?.historyId;
 
-    const history = await gmail.users.history.list({
-      userId: 'me',
-      startHistoryId,
-      historyTypes: ['messageAdded'],
-    });
+    // Explicitly type messages as Schema$Message[]
+    let messages: import('googleapis').gmail_v1.Schema$Message[] = [];
 
-    const messages =
-      history.data.history?.flatMap((h) => h.messages || []) || [];
+    if (startHistoryId) {
+      // Use history API for incremental sync
+      const history = await gmail.users.history.list({
+        userId: 'me',
+        startHistoryId,
+        historyTypes: ['messageAdded'],
+      });
 
+      messages = history.data.history?.flatMap((h) => h.messages || []) || [];
+
+      // Update historyId only if present
+      if (history.data.historyId) {
+        await this.emailService.updateSyncState(
+          userEmail,
+          history.data.historyId,
+        );
+      }
+
+      console.log(`Synced ${messages.length} new message(s) for ${userEmail}.`);
+    } else {
+      // Fallback to list most recent 10 messages
+      const recentMessagesList = await gmail.users.messages.list({
+        userId: 'me',
+        maxResults: 10,
+      });
+
+      messages = recentMessagesList.data.messages || [];
+
+      console.log(
+        `No sync state found. Fetched ${messages.length} most recent message(s) for ${userEmail}.`,
+      );
+
+      // Get the latest historyId and save it for next poll
+      const profile = await gmail.users.getProfile({ userId: 'me' });
+      if (profile.data.historyId) {
+        await this.emailService.updateSyncState(
+          userEmail,
+          profile.data.historyId,
+        );
+      }
+    }
+
+    // Process each message
     for (const msg of messages) {
       const fullMessage = await gmail.users.messages.get({
         userId: 'me',
@@ -57,13 +95,6 @@ export class GmailService {
         format: 'full',
       });
 
-      // Ensure id is present and is a string
-      if (!fullMessage.data.id) {
-        // Optionally log or handle this case
-        continue;
-      }
-
-      // Ensure required fields are present and of correct type
       if (
         typeof fullMessage.data.id === 'string' &&
         typeof fullMessage.data.threadId === 'string' &&
@@ -77,13 +108,6 @@ export class GmailService {
           internalDate: fullMessage.data.internalDate,
         });
       }
-    }
-
-    if (history.data.historyId) {
-      await this.emailService.updateSyncState(
-        userEmail,
-        history.data.historyId,
-      );
     }
   }
 
