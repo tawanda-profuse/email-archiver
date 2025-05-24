@@ -13,6 +13,7 @@ $ npm install
 Create a **.env** file in the project root or configure the projects environment variables as follows:
 
 ```.env
+FRONTEND_URL=http://localhost:5173
 USER_EMAIL='<your-email>'
 GOOGLE_CLIENT_ID='<your-google-client-id>'
 GOOGLE_CLIENT_SECRET='<your-google-client-secret>'
@@ -78,4 +79,4 @@ $ npm run test:cov
 
 ## Deployment
 
-
+The backend can be deployed with Google Cloud Run. The public endpoint provided by the Google Cloud Runner can be used together with Google Push Notifications.
