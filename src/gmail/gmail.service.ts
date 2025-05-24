@@ -4,10 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import { EmailService } from 'src/email/email.service';
 import { Readable } from 'typeorm/platform/PlatformTools';
+import {Cron, CronExpression} from '@nestjs/schedule';
+import {Logger} from '@nestjs/common';
 
 @Injectable()
 export class GmailService {
   private oAuth2Client: OAuth2Client;
+  private readonly logger = new Logger(GmailService.name);
 
   constructor(
     @Inject(forwardRef(() => EmailService))
@@ -190,5 +193,22 @@ export class GmailService {
     });
 
     return res.data.webViewLink || res.data.webContentLink || '';
+  }
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async handleCron() {
+    const userEmail = process.env.USER_EMAIL;
+    if (!userEmail) {
+      this.logger.error('USER_EMAIL environment variable is not set');
+      return;
+    }
+    this.logger.log(`Starting polling for ${userEmail}`);
+    const messages = await this.pollInbox(userEmail);
+
+    return {
+      status: 'Polling complete',
+      messageCount: messages.length,
+      messages, // will contain minimal metadata; can be enhanced
+    };
   }
 }
