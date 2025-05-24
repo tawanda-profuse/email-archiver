@@ -1,8 +1,9 @@
-import { google } from 'googleapis';
+import { google, gmail_v1 } from 'googleapis';
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 import { EmailService } from 'src/email/email.service';
+import { Readable } from 'typeorm/platform/PlatformTools';
 
 @Injectable()
 export class GmailService {
@@ -36,17 +37,26 @@ export class GmailService {
     return res.data;
   }
 
-  async pollInbox(userEmail: string) {
+  async pollInbox(userEmail: string): Promise<
+    {
+      id: string;
+      subject: string;
+      from: string;
+      date: string;
+      isFresh: boolean; // added to distinguish fresh messages
+    }[]
+  > {
     const gmail = google.gmail({ version: 'v1', auth: this.oAuth2Client });
 
     const syncState = await this.emailService.getSyncState(userEmail);
     const startHistoryId = syncState?.historyId;
+    const now = Date.now();
 
-    // Explicitly type messages as Schema$Message[]
-    let messages: import('googleapis').gmail_v1.Schema$Message[] = [];
+    let messages: gmail_v1.Schema$Message[] = [];
+    const fallbackMessages: gmail_v1.Schema$Message[] = [];
 
+    // 1. Fetch new messages via History API
     if (startHistoryId) {
-      // Use history API for incremental sync
       const history = await gmail.users.history.list({
         userId: 'me',
         startHistoryId,
@@ -55,29 +65,30 @@ export class GmailService {
 
       messages = history.data.history?.flatMap((h) => h.messages || []) || [];
 
-      // Update historyId only if present
+      // 2. Always include recent inbox as fallback
+      const fallback = await gmail.users.messages.list({
+        userId: 'me',
+        q: 'in:inbox',
+        maxResults: 10,
+      });
+      fallbackMessages.push(...(fallback.data.messages || []));
+
       if (history.data.historyId) {
         await this.emailService.updateSyncState(
           userEmail,
           history.data.historyId,
         );
       }
-
-      console.log(`Synced ${messages.length} new message(s) for ${userEmail}.`);
     } else {
-      // Fallback to list most recent 10 messages
-      const recentMessagesList = await gmail.users.messages.list({
+      // 3. First time setup — fallback only
+      const recent = await gmail.users.messages.list({
         userId: 'me',
+        q: 'in:inbox',
         maxResults: 10,
       });
 
-      messages = recentMessagesList.data.messages || [];
+      messages = recent.data.messages || [];
 
-      console.log(
-        `No sync state found. Fetched ${messages.length} most recent message(s) for ${userEmail}.`,
-      );
-
-      // Get the latest historyId and save it for next poll
       const profile = await gmail.users.getProfile({ userId: 'me' });
       if (profile.data.historyId) {
         await this.emailService.updateSyncState(
@@ -87,49 +98,97 @@ export class GmailService {
       }
     }
 
-    // Process each message
-    for (const msg of messages) {
+    // 4. Merge and deduplicate message IDs
+    const allMessageIds = new Set([
+      ...messages.map((m) => m.id),
+      ...fallbackMessages.map((m) => m.id),
+    ]);
+
+    const allMessages: gmail_v1.Schema$Message[] = Array.from(
+      allMessageIds,
+    ).map((id) => {
+      return { id } as gmail_v1.Schema$Message;
+    });
+
+    // 5. Process and enrich messages
+    const enrichedMessages: {
+      id: string;
+      subject: string;
+      from: string;
+      date: string;
+      isFresh: boolean;
+    }[] = [];
+
+    let freshCount = 0;
+
+    for (const msg of allMessages) {
       const fullMessage = await gmail.users.messages.get({
         userId: 'me',
         id: msg.id!,
         format: 'full',
       });
 
+      const { data } = fullMessage;
+
       if (
-        typeof fullMessage.data.id === 'string' &&
-        typeof fullMessage.data.threadId === 'string' &&
-        typeof fullMessage.data.internalDate === 'string' &&
-        fullMessage.data.payload
+        typeof data.id === 'string' &&
+        typeof data.threadId === 'string' &&
+        typeof data.internalDate === 'string' &&
+        data.payload
       ) {
         await this.emailService.processAndStoreEmail({
-          id: fullMessage.data.id,
-          threadId: fullMessage.data.threadId,
-          payload: fullMessage.data.payload,
-          internalDate: fullMessage.data.internalDate,
+          id: data.id,
+          threadId: data.threadId,
+          payload: data.payload,
+          internalDate: data.internalDate,
+        });
+
+        const headers = data.payload.headers || [];
+        const subject = headers.find((h) => h.name === 'Subject')?.value || '';
+        const from = headers.find((h) => h.name === 'From')?.value || '';
+        const date = headers.find((h) => h.name === 'Date')?.value || '';
+
+        const ageMs = now - parseInt(data.internalDate);
+        const isFresh = ageMs <= 5 * 60 * 1000;
+
+        if (isFresh) freshCount++;
+
+        enrichedMessages.push({
+          id: data.id,
+          subject,
+          from,
+          date,
+          isFresh,
         });
       }
     }
+
+    console.log(
+      `Fetched ${enrichedMessages.length} total messages for ${userEmail}. ${freshCount} new message(s).`,
+    );
+
+    return enrichedMessages;
   }
 
   async uploadToDrive(
     filename: string,
-    buffer: Buffer,
+    fileBuffer: Buffer,
     mimeType: string,
   ): Promise<string> {
-    const drive = google.drive({ version: 'v3', auth: this.oAuth2Client });
+    const drive = google.drive({ version: 'v3', auth: this.getOAuthClient() });
 
-    const file = await drive.files.create({
+    const res = await drive.files.create({
       requestBody: {
         name: filename,
         mimeType,
       },
       media: {
         mimeType,
-        body: Buffer.from(buffer),
+        body: Readable.from(fileBuffer),
       },
-      fields: 'id,webViewLink',
+      fields: 'id, webViewLink, webContentLink',
     });
 
-    return file.data.webViewLink!;
+    return res.data.webViewLink || res.data.webContentLink || '';
   }
 }

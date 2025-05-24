@@ -11,7 +11,12 @@ export class GmailController {
     if (!userEmail) {
       throw new Error('USER_EMAIL environment variable is not set');
     }
-    await this.gmailService.pollInbox(userEmail);
-    return { status: 'Polling complete' };
+    const messages = await this.gmailService.pollInbox(userEmail);
+
+    return {
+      status: 'Polling complete',
+      messageCount: messages.length,
+      messages, // will contain minimal metadata; can be enhanced
+    };
   }
 }

@@ -52,6 +52,32 @@ export class EmailService {
     const body = this.extractEmailBody(message.payload);
     const attachments = this.extractAttachments(message.payload);
 
+    const uploadedLinks: string[] = [];
+
+    for (const attachment of attachments) {
+      const attachmentData = await this.fetchAttachment(
+        messageId,
+        attachment.attachmentId,
+      );
+
+      const buffer = Buffer.from(attachmentData.data!, 'base64');
+
+      try {
+        const link = await this.gmailService.uploadToDrive(
+          attachment.filename,
+          buffer,
+          attachment.mimeType,
+        );
+
+        uploadedLinks.push(link);
+      } catch (error) {
+        console.error(
+          `Failed to upload attachment: ${attachment.filename}`,
+          error,
+        );
+      }
+    }
+
     const email = {
       messageId,
       threadId: message.threadId,
@@ -62,7 +88,7 @@ export class EmailService {
       cc: headers['cc'] || '',
       bcc: headers['bcc'] || '',
       receivedAt: new Date(parseInt(message.internalDate)),
-      googleDriveLink: attachments[0]?.link || undefined,
+      googleDriveLinks: uploadedLinks.length ? uploadedLinks : null,
     };
 
     return this.emailRepo.save(email);

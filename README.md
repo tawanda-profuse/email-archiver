@@ -4,13 +4,20 @@ This application allows a business user to automatically store all their incomin
 
 ## Project setup
 
-Create a .env file or configure the projects environment variables as follows:
+Install all dependencies with the following command:
+
+```bash
+$ npm install
+```
+
+Create a **.env** file in the project root or configure the projects environment variables as follows:
 
 ```.env
 USER_EMAIL='<your-email>'
 GOOGLE_CLIENT_ID='<your-google-client-id>'
 GOOGLE_CLIENT_SECRET='<your-google-client-secret>'
-GOOGLE_REFRESH_TOKEN=''
+GOOGLE_REFRESH_TOKEN='<your-refresh-token>'
+GOOGLE_ACCESS_TOKEN='<your-access-token>'
 REDIRECT_URI=<your-redirect-uri>
 DB_HOST='<database-host>'
 DB_PORT=<database-port>
@@ -19,22 +26,23 @@ DB_PASSWORD='<database-password>'
 DB_NAME=<database-name>
 ```
 
-Install all dependencies with the following command:
+## Postgres Database Setup
 
-```bash
-$ npm install
-```
+1. Create a database using any service that supports Postgres. Some good options are [Supabase](supabase.com) or [Aiven](https://console.aiven.io).
+2. Using a local instance of PostgresSQL also works.
+3. Acquire the database credentials and update the environment variables for **DB_HOST**, **DB_PORT**, **DB_USERNAME**, **DB_PASSWORD**, and **DB_NAME**.
 
-## Google OAuth Setup
+### Google OAuth Setup
 
 1. [Go to Google Cloud Console](https://console.cloud.google.com).
-2. Enable Gmail API and Google Drive API.
-3. Create OAuth 2.0 Client ID.
-4. Navigate to **APIs & Services → OAuth consent screen**.
-5. Scroll down to the Test users section
-6. Click “Add Users”
-7. Add the Gmail address you're using to sign in
-8. Click Save and Continue
+2. Create a project and name it.
+3. Enable **Gmail API** and **Google Drive API**.
+4. Create an OAuth 2.0 Client ID and Client Secret.
+5. Navigate to **APIs & Services → OAuth consent screen**.
+6. Scroll down to the Test users section
+7. Click “Add Users”
+8. Add the Gmail address you're using to sign in (only emails added to the list will work).
+9. Click Save and Continue
 
 ## Compile and run the project
 
@@ -49,7 +57,11 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
-After successfully running the application in watch mode, the callback URI produces a JSON response that has a "refresh_token" property. Use this value in the environment for the **GOOGLE_REFRESH_TOKEN** value.
+After successfully running the application in watch mode:
+
+1. Make a GET request to the `/auth/login` endpoint.
+2. This returns a response at `/auth/callback` with a **code** value as a URL parameter.
+3. The JSON response provides an object including a "refresh_token" and "access_token" property. Use these values to update the environment variables for the **GOOGLE_REFRESH_TOKEN** and **GOOGLE_ACCESS_TOKEN** values.
 
 ## Run tests
 

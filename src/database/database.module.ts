@@ -14,7 +14,7 @@ import { ConfigModule } from '@nestjs/config';
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
         entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-        synchronize: process.env.NODE_ENV === 'production' ? false : true, // turn off in production
+        synchronize: process.env.NODE_ENV !== 'production', // turn off in production
       }),
     }),
   ],

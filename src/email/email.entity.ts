@@ -31,12 +31,12 @@ export class Email {
   @Column()
   cc: string;
 
-  @Column()
+  @Column({ nullable: true })
   bcc: string;
 
   @CreateDateColumn()
   receivedAt: Date;
 
-  @Column({ type: 'text', nullable: true })
-  googleDriveLink: string | null;
+  @Column({ type: 'simple-array', nullable: true })
+  googleDriveLinks: string[] | null;
 }
