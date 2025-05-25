@@ -27,6 +27,20 @@ DB_PASSWORD='<database-password>'
 DB_NAME=<database-name>
 ```
 
+## Setting Up the Frontend
+
+1. Open the terminal and change the directory to **frontend**:
+
+```bash
+cd frontend
+```
+
+2. Run the React application:
+
+```bash
+npm run dev
+```
+
 ## Postgres Database Setup
 
 1. Create a database using any service that supports Postgres. Some good options are [Supabase](supabase.com) or [Aiven](https://console.aiven.io).
