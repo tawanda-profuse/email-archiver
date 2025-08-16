@@ -55,7 +55,7 @@ npm run dev
 4. Create an OAuth 2.0 Client ID and Client Secret.
 5. Navigate to **APIs & Services → OAuth consent screen**.
 6. Scroll down to the Test users section
-7. Click “Add Users”
+7. Click “Add Users”.
 8. Add the Gmail address you're using to sign in (only emails added to the list will work).
 9. Click Save and Continue
 
